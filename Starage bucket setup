@@ -1,0 +1,8 @@
+STORAGE BUCKET SETUP (MANUAL)
+
+1. Go to Supabase Dashboard → Storage
+2. Click "Create bucket"
+3. Enter:
+   - Name: vcf_files
+   - Public: YES (important for file downloads)
+4. Click "Create bucket"
