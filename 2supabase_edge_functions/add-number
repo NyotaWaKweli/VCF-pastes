@@ -1,0 +1,77 @@
+// supabase/functions/add-number/index.ts
+
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// ─── ENVIRONMENT VARIABLES ───
+const supabaseUrl = Deno.env.get('VITE_SUPABASE_URL')!;
+const supabaseAnonKey = Deno.env.get('VITE_SUPABASE_PUBLISHABLE_KEYS')!;
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+serve(async (req) => {
+    try {
+        const { phoneNumber, countryCode, countryName, deviceId } = await req.json();
+
+        if (!phoneNumber || !deviceId) {
+            return new Response(JSON.stringify({
+                success: false,
+                error: 'Phone number and device ID required'
+            }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        const cleanPhone = phoneNumber.replace(/^\+/, '');
+        const cleanCountryCode = countryCode.replace(/^\+/, '');
+
+        // Check rate limit for add action
+        const { data: rateCheck, error: rateError } = await supabase
+            .rpc('check_rate_limit', {
+                p_device_id: deviceId,
+                p_action: 'add',
+                p_max_per_day: 2,
+                p_cooldown_minutes: 5
+            });
+
+        if (rateError) {
+            return new Response(JSON.stringify({
+                success: false,
+                error: rateError.message
+            }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        if (!rateCheck) {
+            return new Response(JSON.stringify({
+                success: false,
+                error: 'Rate limit exceeded for adding numbers',
+                limit: true
+            }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // Call database function
+        const { data, error } = await supabase
+            .rpc('add_number_to_vcf', {
+                p_phone_number: cleanPhone,
+                p_country_code: cleanCountryCode,
+                p_country_name: countryName,
+                p_device_id: deviceId
+            });
+
+        if (error) throw error;
+
+        return new Response(JSON.stringify({
+            success: true,
+            ...data
+        }), {
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+    } catch (error) {
+        return new Response(JSON.stringify({
+            success: false,
+            error: error.message
+        }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+});
